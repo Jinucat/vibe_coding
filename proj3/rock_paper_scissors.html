@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ 가위바위보 게임 ✨</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Orbitron', monospace;
+            background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* 파티클 배경 */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            animation: float 6s infinite linear;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        .game-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 30px;
+            padding: 50px;
+            box-shadow: 
+                0 25px 50px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            text-align: center;
+            max-width: 800px;
+            width: 100%;
+            position: relative;
+            z-index: 10;
+            animation: containerGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes containerGlow {
+            from {
+                box-shadow: 
+                    0 25px 50px rgba(0, 0, 0, 0.3),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+                    0 0 30px rgba(138, 43, 226, 0.3);
+            }
+            to {
+                box-shadow: 
+                    0 25px 50px rgba(0, 0, 0, 0.3),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+                    0 0 50px rgba(138, 43, 226, 0.6);
+            }
+        }
+
+        h1 {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 40px;
+            font-size: 3.5em;
+            font-weight: 900;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+            animation: titleShine 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes titleShine {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        .score-board {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 50px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .score {
+            text-align: center;
+            position: relative;
+        }
+
+        .score h3 {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .score-value {
+            font-size: 3em;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+            animation: scorePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes scorePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .game-area {
+            margin-bottom: 50px;
+        }
+
+        .choices {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 50px;
+            perspective: 1000px;
+        }
+
+        .choice {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 4em;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 3px solid transparent;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            background-size: 200% 200%;
+            color: white;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+            animation: choiceFloat 3s ease-in-out infinite;
+        }
+
+        .choice:nth-child(1) { animation-delay: 0s; }
+        .choice:nth-child(2) { animation-delay: 0.2s; }
+        .choice:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes choiceFloat {
+            0%, 100% { transform: translateY(0px) rotateY(0deg); }
+            50% { transform: translateY(-10px) rotateY(10deg); }
+        }
+
+        .choice::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .choice:hover {
+            transform: scale(1.2) rotateY(15deg);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.3),
+                0 0 30px rgba(255, 255, 255, 0.5);
+            animation-play-state: paused;
+        }
+
+        .choice:hover::before {
+            left: 100%;
+        }
+
+        .choice.selected {
+            border-color: #ffd700;
+            transform: scale(1.3) rotateY(0deg);
+            box-shadow: 
+                0 25px 50px rgba(255, 215, 0, 0.4),
+                0 0 40px rgba(255, 215, 0, 0.8);
+            animation: selectedPulse 0.6s ease-in-out;
+        }
+
+        @keyframes selectedPulse {
+            0% { transform: scale(1.2) rotateY(0deg); }
+            50% { transform: scale(1.4) rotateY(10deg); }
+            100% { transform: scale(1.3) rotateY(0deg); }
+        }
+
+        .vs {
+            font-size: 3em;
+            font-weight: 900;
+            color: #fff;
+            margin: 30px 0;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+            animation: vsGlow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes vsGlow {
+            from { text-shadow: 0 0 30px rgba(255, 255, 255, 0.8); }
+            to { text-shadow: 0 0 50px rgba(255, 255, 255, 1), 0 0 70px rgba(138, 43, 226, 0.8); }
+        }
+
+        .computer-area {
+            margin: 30px 0;
+            position: relative;
+        }
+
+        .computer-choice {
+            font-size: 5em;
+            margin: 20px 0;
+            display: inline-block;
+            animation: computerIdle 2s ease-in-out infinite;
+        }
+
+        @keyframes computerIdle {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(5deg); }
+        }
+
+        .result {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin: 30px 0;
+            padding: 25px;
+            border-radius: 15px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .result::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: resultShine 2s ease-in-out infinite;
+        }
+
+        @keyframes resultShine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .result.win {
+            background: linear-gradient(45deg, rgba(76, 175, 80, 0.3), rgba(139, 195, 74, 0.3));
+            color: #4caf50;
+            border-color: rgba(76, 175, 80, 0.5);
+            animation: winCelebration 0.6s ease-in-out;
+        }
+
+        @keyframes winCelebration {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .result.lose {
+            background: linear-gradient(45deg, rgba(244, 67, 54, 0.3), rgba(233, 30, 99, 0.3));
+            color: #f44336;
+            border-color: rgba(244, 67, 54, 0.5);
+            animation: loseShake 0.6s ease-in-out;
+        }
+
+        @keyframes loseShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .result.tie {
+            background: linear-gradient(45deg, rgba(255, 193, 7, 0.3), rgba(255, 152, 0, 0.3));
+            color: #ff9800;
+            border-color: rgba(255, 193, 7, 0.5);
+        }
+
+        .reset-btn {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            background-size: 200% 200%;
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 1.3em;
+            font-weight: 700;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+            animation: buttonGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes buttonGlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .reset-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .reset-btn:hover::before {
+            left: 100%;
+        }
+
+        .game-history {
+            margin-top: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 25px;
+            border-radius: 20px;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .game-history h3 {
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .history-item {
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #4ecdc4;
+            color: rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+            animation: historySlide 0.5s ease-out;
+        }
+
+        @keyframes historySlide {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateX(5px);
+        }
+
+        .countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8em;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 0 0 50px rgba(255, 255, 255, 0.8);
+            z-index: 1000;
+            animation: countdownPulse 1s ease-in-out;
+        }
+
+        @keyframes countdownPulse {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+
+        .celebration {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #ff6b6b;
+            animation: confettiFall 3s linear infinite;
+        }
+
+        .confetti:nth-child(2n) { background: #4ecdc4; }
+        .confetti:nth-child(3n) { background: #45b7d1; }
+        .confetti:nth-child(4n) { background: #96ceb4; }
+        .confetti:nth-child(5n) { background: #feca57; }
+
+        @keyframes confettiFall {
+            0% {
+                transform: translateY(-100vh) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 2.5em;
+            }
+            
+            .choices {
+                gap: 20px;
+            }
+            
+            .choice {
+                width: 100px;
+                height: 100px;
+                font-size: 2.5em;
+            }
+            
+            .score-value {
+                font-size: 2em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .choices {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+            
+            .choice {
+                width: 80px;
+                height: 80px;
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="particles" id="particles"></div>
+    
+    <div class="game-container">
+        <h1>✨ 가위바위보 게임 ✨</h1>
+        
+        <div class="score-board">
+            <div class="score">
+                <h3>플레이어</h3>
+                <div class="score-value" id="player-score">0</div>
+            </div>
+            <div class="score">
+                <h3>컴퓨터</h3>
+                <div class="score-value" id="computer-score">0</div>
+            </div>
+        </div>
+
+        <div class="game-area">
+            <div class="choices">
+                <div class="choice" data-choice="rock" title="바위">🪨</div>
+                <div class="choice" data-choice="paper" title="보">📄</div>
+                <div class="choice" data-choice="scissors" title="가위">✂️</div>
+            </div>
+            
+            <div class="vs">VS</div>
+            
+            <div class="computer-area">
+                <div class="computer-choice" id="computer-display">🤖</div>
+            </div>
+            
+            <div class="result" id="result">✨ 선택하세요! ✨</div>
+        </div>
+
+        <button class="reset-btn" id="reset-btn">🔄 게임 리셋</button>
+
+        <div class="game-history">
+            <h3>📊 게임 기록</h3>
+            <div id="history-list"></div>
+        </div>
+    </div>
+
+    <div class="celebration" id="celebration"></div>
+
+    <script>
+        $(document).ready(function() {
+            let playerScore = 0;
+            let computerScore = 0;
+            let gameHistory = [];
+            let isGameActive = true;
+
+            const choices = {
+                rock: { emoji: '🪨', name: '바위' },
+                paper: { emoji: '📄', name: '보' },
+                scissors: { emoji: '✂️', name: '가위' }
+            };
+
+            // 파티클 생성
+            function createParticles() {
+                const particlesContainer = $('#particles');
+                for (let i = 0; i < 50; i++) {
+                    const particle = $('<div class="particle"></div>');
+                    particle.css({
+                        left: Math.random() * 100 + '%',
+                        animationDelay: Math.random() * 6 + 's',
+                        animationDuration: (Math.random() * 3 + 3) + 's'
+                    });
+                    particlesContainer.append(particle);
+                }
+            }
+
+            // 폭죽 효과
+            function createConfetti() {
+                const celebration = $('#celebration');
+                celebration.empty();
+                
+                for (let i = 0; i < 100; i++) {
+                    const confetti = $('<div class="confetti"></div>');
+                    confetti.css({
+                        left: Math.random() * 100 + '%',
+                        animationDelay: Math.random() * 3 + 's',
+                        animationDuration: (Math.random() * 2 + 2) + 's'
+                    });
+                    celebration.append(confetti);
+                }
+                
+                setTimeout(() => {
+                    celebration.empty();
+                }, 5000);
+            }
+
+            // 카운트다운 효과
+            function showCountdown(callback) {
+                const countdown = $('<div class="countdown">3</div>');
+                $('body').append(countdown);
+                
+                let count = 3;
+                const countdownInterval = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        countdown.text(count);
+                    } else {
+                        countdown.text('GO!');
+                        setTimeout(() => {
+                            countdown.remove();
+                            if (callback) callback();
+                        }, 500);
+                        clearInterval(countdownInterval);
+                    }
+                }, 1000);
+            }
+
+            // 컴퓨터 선택 함수
+            function getComputerChoice() {
+                const choiceKeys = Object.keys(choices);
+                const randomIndex = Math.floor(Math.random() * choiceKeys.length);
+                return choiceKeys[randomIndex];
+            }
+
+            // 게임 결과 판정 함수
+            function determineWinner(playerChoice, computerChoice) {
+                if (playerChoice === computerChoice) {
+                    return 'tie';
+                }
+                
+                const winConditions = {
+                    rock: 'scissors',
+                    paper: 'rock',
+                    scissors: 'paper'
+                };
+                
+                return winConditions[playerChoice] === computerChoice ? 'win' : 'lose';
+            }
+
+            // 점수 업데이트
+            function updateScore(result) {
+                if (result === 'win') {
+                    playerScore++;
+                    $('#player-score').addClass('bounce');
+                    setTimeout(() => $('#player-score').removeClass('bounce'), 600);
+                } else if (result === 'lose') {
+                    computerScore++;
+                    $('#computer-score').addClass('bounce');
+                    setTimeout(() => $('#computer-score').removeClass('bounce'), 600);
+                }
+                
+                $('#player-score').text(playerScore);
+                $('#computer-score').text(computerScore);
+            }
+
+            // 결과 표시
+            function displayResult(playerChoice, computerChoice, result) {
+                const playerEmoji = choices[playerChoice].emoji;
+                const computerEmoji = choices[computerChoice].emoji;
+                const computerName = choices[computerChoice].name;
+                
+                $('#computer-display').html(computerEmoji).addClass('bounce');
+                setTimeout(() => $('#computer-display').removeClass('bounce'), 600);
+                
+                let resultText = '';
+                let resultClass = '';
+                
+                switch(result) {
+                    case 'win':
+                        resultText = `🎉 승리! ${choices[playerChoice].name}이(가) ${computerName}을(를) 이겼습니다! 🎉`;
+                        resultClass = 'win';
+                        createConfetti();
+                        break;
+                    case 'lose':
+                        resultText = `😢 패배! ${computerName}이(가) ${choices[playerChoice].name}을(를) 이겼습니다! 😢`;
+                        resultClass = 'lose';
+                        break;
+                    case 'tie':
+                        resultText = `🤝 무승부! 둘 다 ${choices[playerChoice].name}입니다! 🤝`;
+                        resultClass = 'tie';
+                        break;
+                }
+                
+                $('#result').html(resultText).removeClass('win lose tie').addClass(resultClass);
+                
+                // 게임 기록 추가
+                addToHistory(playerChoice, computerChoice, result);
+                
+                // 3초 후 다음 게임 준비
+                setTimeout(() => {
+                    $('.choice').removeClass('selected');
+                    $('#result').html('✨ 다시 선택하세요! ✨').removeClass('win lose tie');
+                    $('#computer-display').html('🤖');
+                    isGameActive = true;
+                }, 3000);
+            }
+
+            // 게임 기록 추가
+            function addToHistory(playerChoice, computerChoice, result) {
+                const timestamp = new Date().toLocaleTimeString();
+                const playerName = choices[playerChoice].name;
+                const computerName = choices[computerChoice].name;
+                const resultText = result === 'win' ? '승리' : result === 'lose' ? '패배' : '무승부';
+                const resultEmoji = result === 'win' ? '🎉' : result === 'lose' ? '😢' : '🤝';
+                
+                const historyItem = {
+                    timestamp,
+                    player: playerName,
+                    computer: computerName,
+                    result: resultText,
+                    emoji: resultEmoji
+                };
+                
+                gameHistory.unshift(historyItem);
+                
+                // 최대 10개 기록만 유지
+                if (gameHistory.length > 10) {
+                    gameHistory = gameHistory.slice(0, 10);
+                }
+                
+                updateHistoryDisplay();
+            }
+
+            // 게임 기록 표시 업데이트
+            function updateHistoryDisplay() {
+                const historyHtml = gameHistory.map(item => 
+                    `<div class="history-item">
+                        ${item.emoji} ${item.timestamp} - ${item.player} vs ${item.computer} (${item.result})
+                    </div>`
+                ).join('');
+                
+                $('#history-list').html(historyHtml);
+            }
+
+            // 선택 애니메이션
+            function animateChoice(choiceElement) {
+                choiceElement.addClass('shake');
+                setTimeout(() => {
+                    choiceElement.removeClass('shake');
+                }, 500);
+            }
+
+            // 게임 플레이
+            $('.choice').click(function() {
+                if (!isGameActive || $(this).hasClass('selected')) return;
+                
+                isGameActive = false;
+                
+                // 이전 선택 제거
+                $('.choice').removeClass('selected');
+                
+                // 현재 선택 표시
+                $(this).addClass('selected');
+                
+                // 애니메이션
+                animateChoice($(this));
+                
+                const playerChoice = $(this).data('choice');
+                
+                // 카운트다운 후 결과 표시
+                showCountdown(() => {
+                    const computerChoice = getComputerChoice();
+                    const result = determineWinner(playerChoice, computerChoice);
+                    
+                    updateScore(result);
+                    displayResult(playerChoice, computerChoice, result);
+                });
+            });
+
+            // 리셋 버튼
+            $('#reset-btn').click(function() {
+                playerScore = 0;
+                computerScore = 0;
+                gameHistory = [];
+                isGameActive = true;
+                
+                $('#player-score').text('0').removeClass('bounce');
+                $('#computer-score').text('0').removeClass('bounce');
+                $('#result').html('✨ 선택하세요! ✨').removeClass('win lose tie');
+                $('#computer-display').html('🤖').removeClass('bounce');
+                $('.choice').removeClass('selected');
+                $('#history-list').empty();
+                $('#celebration').empty();
+            });
+
+            // 키보드 단축키
+            $(document).keydown(function(e) {
+                if (!isGameActive) return;
+                
+                if (e.key === '1') {
+                    $('.choice[data-choice="rock"]').click();
+                } else if (e.key === '2') {
+                    $('.choice[data-choice="paper"]').click();
+                } else if (e.key === '3') {
+                    $('.choice[data-choice="scissors"]').click();
+                } else if (e.key === 'r' || e.key === 'R') {
+                    $('#reset-btn').click();
+                }
+            });
+
+            // 초기화
+            createParticles();
+            
+            // 초기 안내 메시지
+            setTimeout(() => {
+                if ($('#result').text().includes('선택하세요')) {
+                    $('#result').html('🎮 가위(✂️), 바위(🪨), 보(📄) 중 하나를 선택하세요!<br><small>키보드: 1(바위), 2(보), 3(가위), R(리셋)</small>');
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

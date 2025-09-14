@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>🚀 장애물 피하기 게임 — Optimized (Phaser 3.60)</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<style>
+  body{margin:0;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:100vh;
+       background:linear-gradient(135deg,#0c0c0c,#1a1a2e,#16213e);font-family:Arial,Helvetica,sans-serif}
+  #game-container{border:3px solid #00ffff;border-radius:15px;overflow:hidden;
+    box-shadow:0 0 30px rgba(0,255,255,.5), inset 0 0 30px rgba(0,255,255,.1)}
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+
+<script>
+/* ===================== Config ===================== */
+const CFG = {
+  canvas: { w: 960, h: 540 },
+  groundY: 540 - 20,
+  player: { speed: 260, jump: -420, airControl: .7, iframes: 800, w:32, h:48 },
+  hp: { start: 100, healOnWaveClear: 5 },
+  score: { perSecond: 1, waveBonus: n => n*10 },
+  spawn: {
+    baseInterval: 900, minInterval: 350, step: -60,
+    baseSpeed: 220, speedStep: 15,
+    maxBase: 8, maxStep: 1, maxCap: 18
+  },
+  wave: { duration: n => 24 + Math.min(11,n), rest: 3000 },
+  pool: { obstacles: 80, hazards: 24 }
+};
+
+/* ===================== Globals ===================== */
+let game, scene;
+let player, platforms, ground;
+let obstacleGroup, hazardGroup;
+let hitEmitter, laserWarning;
+let hpBar, scoreText, highScoreText, waveInfoText, waveText, gameOverText, restartButton, pauseOverlay, pauseText;
+
+let cursors, keyA, keyD, keySpace, keyP, keyESC;
+
+let gameState = 'boot';
+let currentWave = 1;
+let hp = CFG.hp.start;
+let score = 0;
+let highScore = parseInt(localStorage.getItem('highScore')||'0',10);
+
+let waveTimer = 0;
+let spawnEvent = null, countdownEvent = null;
+let isInvuln = false, invulnMs = 0;
+let paused = false;
+
+/* ===================== Phaser Setup ===================== */
+const config = {
+  type: Phaser.AUTO,
+  width: CFG.canvas.w,
+  height: CFG.canvas.h,
+  parent: 'game-container',
+  physics: {
+    default: 'arcade',
+    arcade: { gravity: { y: 800 }, debug: false }
+  },
+  scene: { preload, create, update }
+};
+
+/* ===================== Boot ===================== */
+function preload(){}
+
+/* ===================== Create ===================== */
+function create(){
+  scene = this;
+  makeTextures();
+
+  // Background
+  const gBg = scene.add.graphics();
+  gBg.fillGradientStyle(0x000011,0x000033,0x001122,0x002244,1).fillRect(0,0,CFG.canvas.w,CFG.canvas.h);
+
+  // Ground
+  platforms = scene.physics.add.staticGroup();
+  ground = platforms.create(CFG.canvas.w/2, CFG.groundY, 'groundTex');
+  ground.setDisplaySize(CFG.canvas.w, 40).setAlpha(0.85).setTint(0x444444);
+  ground.refreshBody();
+  scene.physics.world.setBounds(0,0,CFG.canvas.w,CFG.canvas.h);
+
+  // Player
+  player = scene.physics.add.sprite(120, CFG.canvas.h-100, 'playerTex');
+  player.setCollideWorldBounds(true).setBounce(0.2);
+  player.body.setDragX(1000);
+  scene.physics.add.collider(player, platforms);
+
+  // Groups (pooled)
+  obstacleGroup = scene.physics.add.group({ defaultKey:'obTex', maxSize: CFG.pool.obstacles, runChildUpdate:false });
+  hazardGroup   = scene.physics.add.group({ defaultKey:'hazTex', maxSize: CFG.pool.hazards,   runChildUpdate:false });
+
+  // Overlaps (콜백 1회 등록)
+  scene.physics.add.overlap(player, obstacleGroup, onHitObstacle, null, scene);
+  scene.physics.add.overlap(player, hazardGroup,   onHitHazard,   null, scene);
+
+  // Effects
+  const hitFlash = scene.add.graphics().setDepth(1000);
+  scene.events.on('hit-flash', ()=>{
+    hitFlash.clear().fillStyle(0xff0000, .35).fillRect(0,0,CFG.canvas.w,CFG.canvas.h);
+    scene.time.delayedCall(220, ()=> hitFlash.clear());
+  });
+
+  hitEmitter = scene.add.particles(0,0,'particleTex',{
+    lifespan: 600, speed:{min:120,max:260}, gravityY:300,
+    scaleX:{start:.9,end:0}, scaleY:{start:.9,end:0},
+    quantity: 18, tint: 0xff7777, blendMode: Phaser.BlendModes.ADD, frequency: -1
+  });
+
+  laserWarning = scene.add.graphics().setDepth(50);
+
+  // UI
+  hpBar = scene.add.graphics().setDepth(100);
+  scoreText = scene.add.text(20,20,'점수: 0',{fontSize:'24px',fill:'#00ffff',stroke:'#000',strokeThickness:2}).setDepth(100);
+  highScoreText = scene.add.text(20,48,'최고점수: '+highScore,{fontSize:'18px',fill:'#ffff00',stroke:'#000',strokeThickness:2}).setDepth(100);
+  waveInfoText = scene.add.text(CFG.canvas.w-200,20,'',{fontSize:'20px',fill:'#fff',stroke:'#000',strokeThickness:2}).setDepth(100);
+
+  waveText = scene.add.text(CFG.canvas.w/2, CFG.canvas.h/2, '',{fontSize:'48px',fill:'#00ffff',stroke:'#000',strokeThickness:4}).setOrigin(.5).setDepth(200);
+  gameOverText = scene.add.text(CFG.canvas.w/2, CFG.canvas.h/2-50, '게임 오버!',{fontSize:'48px',fill:'#ff0000',stroke:'#000',strokeThickness:4}).setOrigin(.5).setDepth(300).setVisible(false);
+  restartButton = scene.add.text(CFG.canvas.w/2, CFG.canvas.h/2+50, '재시작(R)',{fontSize:'24px',fill:'#00ff00',stroke:'#000',strokeThickness:2}).setOrigin(.5).setDepth(300).setVisible(false).setInteractive();
+  restartButton.on('pointerdown', ()=> restartGame());
+
+  pauseOverlay = scene.add.graphics().setDepth(400).setVisible(false).fillStyle(0x000000,.7).fillRect(0,0,CFG.canvas.w,CFG.canvas.h);
+  pauseText = scene.add.text(CFG.canvas.w/2, CFG.canvas.h/2, '일시정지\nP 또는 ESC로 계속',{fontSize:'32px',fill:'#fff',stroke:'#000',strokeThickness:3,align:'center'}).setOrigin(.5).setDepth(401).setVisible(false);
+
+  // Input
+  cursors = scene.input.keyboard.createCursorKeys();
+  keyA = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+  keyD = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+  keySpace = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  keyP = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+  keyESC = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+
+  keyP.on('down', togglePause);
+  keyESC.on('down', togglePause);
+  scene.input.keyboard.on('keydown-R', ()=> (gameState==='gameover') && restartGame());
+
+  // Start menu
+  startMenu();
+}
+
+/* ===================== Update ===================== */
+function update(time, delta){
+  if (gameState!=='playing') return;
+
+  // Timer
+  waveTimer -= delta;
+  if (waveTimer<=0){ endWave(); return; }
+
+  // Score
+  score += CFG.score.perSecond*(delta/1000);
+  scoreText.setText('점수: '+Math.floor(score));
+
+  // HP bar & wave info
+  drawHP();
+  waveInfoText.setText('웨이브: '+currentWave+'\n남은 시간: '+Math.ceil(waveTimer/1000)+'초');
+
+  // Input
+  updatePlayerControls();
+
+  // Obstacles behavior & cleanup (iterate group only)
+  obstacleGroup.children.iterate(o=>{
+    if(!o || !o.active) return;
+
+    // Behavior per kind
+    switch (o.kind){
+      case 'homing': {
+        const dx = player.x - o.x;
+        const desiredVx = Phaser.Math.Clamp(dx*2, -140, 140);
+        o.body.setVelocityX(Phaser.Math.Linear(o.body.velocity.x, desiredVx, 0.04));
+        break;
+      }
+      case 'sine': {
+        const t = (scene.time.now - o.ai.t0);
+        o.x = o.ai.x0 + o.ai.amp * Math.sin(o.ai.freq * t);
+        break;
+      }
+      case 'splitter': {
+        if (!o.ai.split && o.y > CFG.canvas.h*0.45){
+          o.ai.split = true;
+          // spawn two shards
+          for (const vx of [-150, 150]){
+            const s = obstacleGroup.get(o.x, o.y, 'obTex');
+            if (!s) continue;
+            setupObstacle(s, 'shard', o.fall + 120, { w:18,h:18, tint:0xffbb55, vx, vy:o.fall*1.3, dmg:6, spin: 360 });
+          }
+          deactivate(o);
+          return;
+        }
+        break;
+      }
+      case 'bomb': {
+        if (!o.ai.exploded && o.y + o.displayHeight*0.5 >= CFG.groundY-2){
+          o.ai.exploded = true;
+          spawnAoe(o.x, CFG.groundY-40, 120, 120, 16, 500);
+          deactivate(o);
+          return;
+        }
+        break;
+      }
+      default: break;
+    }
+
+    // Out of bounds cleanup
+    if (o.y > CFG.canvas.h + 60 || o.x < -80 || o.x > CFG.canvas.w+80){
+      deactivate(o);
+    }
+  });
+
+  // Hazards lifetime
+  hazardGroup.children.iterate(h=>{
+    if (!h || !h.active) return;
+    h.life -= delta;
+    if (h.life<=0) deactivate(h);
+  });
+
+  // i-frames
+  if (isInvuln){
+    invulnMs -= delta;
+    if (invulnMs<=0){ isInvuln=false; player.setAlpha(1); }
+    else { player.setAlpha(.5 + .5*Math.sin(scene.time.now*0.02)); }
+  }
+}
+
+/* ===================== Textures ===================== */
+function makeTextures(){
+  let g = scene.add.graphics();
+  g.fillStyle(0x00ffff,1).fillRoundedRect(0,0, CFG.player.w, CFG.player.h, 6);
+  g.generateTexture('playerTex', CFG.player.w, CFG.player.h); g.destroy();
+
+  g = scene.add.graphics(); g.fillStyle(0x444444,1).fillRect(0,0,2,2);
+  g.generateTexture('groundTex',2,2); g.destroy();
+
+  g = scene.add.graphics(); g.fillStyle(0xffffff,1).fillRect(0,0,40,40);
+  g.generateTexture('obTex',40,40); g.destroy();
+
+  g = scene.add.graphics(); g.fillStyle(0xffaa00, .6).fillCircle(60,60,60);
+  g.generateTexture('hazTex', 120,120); g.destroy();
+
+  g = scene.add.graphics(); g.fillStyle(0xffffff,1).fillCircle(6,6,6);
+  g.generateTexture('particleTex',12,12); g.destroy();
+}
+
+/* ===================== UI & Flow ===================== */
+function startMenu(){
+  gameState = 'menu';
+  waveText.setText('🚀 장애물 피하기 게임 🚀\n\n조작: A/D 이동, SPACE 점프\n시작하려면 SPACE');
+  waveText.setVisible(true);
+  keySpace.once('down', startGame);
+}
+
+function startGame(){
+  currentWave = 1; hp = CFG.hp.start; score = 0; isInvuln=false; invulnMs=0; paused=false;
+  player.setPosition(120, CFG.canvas.h-100).setAlpha(1).body.setVelocity(0,0);
+  clearAll();
+  startWaveCountdown();
+}
+
+function startWaveCountdown(){
+  gameState = 'ready';
+  let cd = 3;
+  waveText.setText(`웨이브 ${currentWave}\n준비...\n${cd}`).setVisible(true);
+  countdownEvent?.remove(); countdownEvent = scene.time.addEvent({
+    delay:1000, repeat:2, callback: ()=>{
+      cd--;
+      if(cd>0){ waveText.setText(`웨이브 ${currentWave}\n준비...\n${cd}`); }
+      else{
+        waveText.setText('시작!');
+        scene.time.delayedCall(500, ()=>{ waveText.setVisible(false); startPlaying(); });
+      }
+    }
+  });
+}
+
+function startPlaying(){
+  gameState = 'playing';
+  waveTimer = CFG.wave.duration(currentWave)*1000;
+
+  // spawn params
+  const interval = Math.max(CFG.spawn.baseInterval + (currentWave-1)*CFG.spawn.step, CFG.spawn.minInterval);
+  const fall = CFG.spawn.baseSpeed + (currentWave-1)*CFG.spawn.speedStep;
+  const cap = Math.min(CFG.spawn.maxBase + (currentWave-1)*CFG.spawn.maxStep, CFG.spawn.maxCap);
+
+  spawnEvent?.remove();
+  spawnEvent = scene.time.addEvent({
+    delay: interval, loop:true, callback: ()=>{
+      if (gameState!=='playing') return;
+      if (obstacleGroup.countActive(true) >= cap) return;
+
+      // type selection by weight
+      const weights = getWeightsByWave(currentWave);
+      const type = weightedPick(weights);
+
+      // some special spawns
+      if (type==='sweep'){ spawnHorizontalSweep(); return; }
+      if (type==='laser'){ spawnVerticalLaser(fall); return; }
+
+      const x = 32 + Math.random()*(CFG.canvas.w-64);
+      const o = obstacleGroup.get(x, -50, 'obTex');
+      if (!o) return;
+      switch(type){
+        case 'meteor': setupObstacle(o,'meteor',fall,{w:48,h:48,tint:0xff4444, vy:fall}); break;
+        case 'shuriken': setupObstacle(o,'shuriken',fall,{w:24,h:24,tint:0x44ff44, vy:fall*1.5, spin: 420}); break;
+        case 'zigzag': setupObstacle(o,'zigzag',fall,{w:40,h:40,tint:0xffff44, vy:fall, vx:(Math.random()-0.5)*220, spin: 180}); break;
+        case 'puddle': setupObstacle(o,'puddle',fall,{w:64,h:32,tint:0x4444ff, vy:fall*.7}); break;
+        case 'homing': setupObstacle(o,'homing',fall,{w:34,h:34,tint:0xdd66ff, vy:fall*0.95}); break;
+        case 'sine': setupObstacle(o,'sine',fall,{w:36,h:36,tint:0x66c5ff, vy:fall*0.9, sine:true}); break;
+        case 'splitter': setupObstacle(o,'splitter',fall,{w:44,h:44,tint:0xffbb55, vy:fall, spin: 120}); break;
+        case 'bomb': setupObstacle(o,'bomb',fall,{w:34,h:34,tint:0xff6666, vy:fall*1.1}); break;
+      }
+    }
+  });
+}
+
+function endWave(){
+  gameState = 'clear';
+  spawnEvent?.remove(); spawnEvent=null;
+  waveText.setText(`웨이브 ${currentWave} 클리어!\n점수 +${CFG.score.waveBonus(currentWave)}`).setVisible(true);
+  score += CFG.score.waveBonus(currentWave);
+  if (CFG.hp.healOnWaveClear>0) hp = Math.min(CFG.hp.start, hp+CFG.hp.healOnWaveClear);
+  clearAll();
+  scene.time.delayedCall(1800, ()=>{ waveText.setVisible(false); currentWave++; startWaveCountdown(); });
+}
+
+function gameOver(){
+  gameState = 'gameover'; clearTimers();
+  if (Math.floor(score) > highScore){
+    highScore = Math.floor(score); localStorage.setItem('highScore', String(highScore));
+    highScoreText.setText('최고점수: '+highScore);
+  }
+  gameOverText.setVisible(true); restartButton.setVisible(true);
+}
+
+function restartGame(){ startGame(); }
+
+/* ===================== Draw / Input ===================== */
+function drawHP(){
+  const x=20,y=CFG.canvas.h-40,w=220,h=20;
+  const pct = Phaser.Math.Clamp(hp/CFG.hp.start,0,1);
+  const color = pct>.6?0x00ff00: pct>.3?0xffff00: 0xff0000;
+  hpBar.clear().fillStyle(0x333,1).fillRect(x,y,w,h).fillStyle(color,1).fillRect(x,y,w*pct,h)
+       .lineStyle(2,0xffffff,1).strokeRect(x,y,w,h);
+}
+
+function updatePlayerControls(){
+  if (paused) return;
+  const left  = keyA.isDown || cursors.left.isDown;
+  const right = keyD.isDown || cursors.right.isDown;
+  if (left || right){
+    const dir = left? -1: 1;
+    const spd = player.body.touching.down ? CFG.player.speed : CFG.player.speed*CFG.player.airControl;
+    player.body.setVelocityX(spd*dir);
+  }else{
+    player.body.setVelocityX(0);
+  }
+  const wantJump = keySpace.isDown || cursors.up.isDown;
+  if (wantJump && player.body.touching.down){ player.body.setVelocityY(CFG.player.jump); }
+}
+
+/* ===================== Spawn Helpers ===================== */
+function getWeightsByWave(n){
+  // 반환: { type: weight, ... }
+  const base = {
+    meteor:  3, shuriken: 3, zigzag: 2, puddle: 1,
+    homing:  Math.max(0, n-2)*0.6,
+    sine:    Math.max(0, n-1)*0.6,
+    splitter:Math.max(0, n-3)*0.6,
+    bomb:    Math.max(0, n-4)*0.5,
+    laser:   (n>=6)?0.8:0,
+    sweep:   (n>=4)?0.6:0
+  };
+  return base;
+}
+
+function weightedPick(weights){
+  let sum=0; for (const k in weights) sum += weights[k];
+  let r = Math.random()*sum;
+  for (const k in weights){ r -= weights[k]; if (r<=0) return k; }
+  return 'meteor';
+}
+
+function setupObstacle(o, kind, fall, opts){
+  o.setActive(true).setVisible(true).setTint(opts.tint||0xffffff);
+  setSpriteSize(o, opts.w||40, opts.h||40);
+  o.kind = kind;
+  o.dmg  = getDamage(kind);
+  o.fall = fall;
+  o.ai   = { split:false };
+  o.body.setAllowGravity(true);
+  o.body.setVelocity(opts.vx||0, opts.vy||fall);
+
+  if (opts.spin) o.body.setAngularVelocity(opts.spin);
+  else o.body.setAngularVelocity(0);
+
+  if (opts.sine){
+    o.ai.t0  = scene.time.now;
+    o.ai.x0  = o.x;
+    o.ai.amp = 80;
+    o.ai.freq= 0.004; // rad/ms
+  }
+}
+
+function getDamage(kind){
+  const map = { meteor:10, shuriken:7, zigzag:12, puddle:15, laser:18, sweep:20, homing:11, sine:10, splitter:10, shard:6, bomb:14 };
+  return map[kind] ?? 10;
+}
+
+function setSpriteSize(s, w, h){
+  s.setDisplaySize(w,h);
+  s.body.setSize(w,h,true);
+}
+
+function deactivate(s){
+  if(!s.active) return;
+  s.setActive(false).setVisible(false);
+  s.body.stop();
+}
+
+/* ===================== Special Spawns ===================== */
+function spawnAoe(x,y,w,h,dmg,lifeMs){
+  const hzd = hazardGroup.get(x,y,'hazTex');
+  if (!hzd) return;
+  setSpriteSize(hzd, w, h);
+  hzd.setActive(true).setVisible(true).setTint(0xffaa00).setAlpha(.65);
+  hzd.dmg = dmg; hzd.life = lifeMs;
+  hzd.body.setAllowGravity(false).setImmovable(true).setVelocity(0,0);
+  // 작은 폭발 파티클
+  hitEmitter.explode(20, x, y);
+}
+
+function spawnHorizontalSweep(){
+  const y = Phaser.Math.Clamp(120 + Math.random()*(CFG.canvas.h-240), 100, CFG.canvas.h-100);
+  // 경고선
+  laserWarning.clear().lineStyle(4,0xff0040,.9).lineBetween(0,y,CFG.canvas.w,y);
+  scene.time.delayedCall(900, ()=>{
+    laserWarning.clear();
+    // 레이저 바 (좌->우 또는 우->좌)
+    const fromLeft = Math.random()<.5;
+    const x = fromLeft? -120 : CFG.canvas.w+120;
+    const laser = obstacleGroup.get(x, y, 'obTex');
+    if (!laser) return;
+    setupObstacle(laser,'sweep',0,{ w:280, h:10, tint:0xff0040, vx: fromLeft? 460 : -460, vy: 0 });
+    laser.body.setAllowGravity(false);
+  });
+}
+
+function spawnVerticalLaser(fall){
+  const x = 50 + Math.random()*(CFG.canvas.w-100);
+  // 경고
+  laserWarning.clear().lineStyle(4,0xff0000,.8).lineBetween(x,0,x,CFG.canvas.h);
+  scene.time.delayedCall(900, ()=>{
+    laserWarning.clear();
+    const l = obstacleGroup.get(x, -50, 'obTex');
+    if (!l) return;
+    setupObstacle(l,'laser',fall,{ w:8, h:CFG.canvas.h, tint:0xff0000, vy: fall*1.8 });
+    l.body.setAllowGravity(false);
+  });
+}
+
+/* ===================== Collisions ===================== */
+function onHitObstacle(_player, o){
+  if (!o.active || isInvuln) return;
+  applyDamage(o.dmg);
+  hitEmitter.explode(16, o.x, o.y);
+  // puddle이 바닥에 닿아 잔류하도록 하고 싶다면 여기서 비활성화하지 않고 ground 충돌에서 처리 가능.
+  deactivate(o);
+}
+
+function onHitHazard(_player, h){
+  if (!h.active || isInvuln) return;
+  applyDamage(h.dmg);
+  // 다중 피격 방지(한 번만)
+  h.dmg = 0;
+}
+
+function applyDamage(d){
+  hp -= d; isInvuln=true; invulnMs = CFG.player.iframes;
+  scene.events.emit('hit-flash');
+  scene.cameras.main.shake(120, 0.01);
+  if (hp<=0){ hp=0; gameOver(); }
+}
+
+/* ===================== Pause & Clear ===================== */
+function togglePause(){
+  if (gameState!=='playing') return;
+  paused = !paused;
+  pauseOverlay.setVisible(paused); pauseText.setVisible(paused);
+  if (paused) scene.scene.pause(); else scene.scene.resume();
+}
+
+function clearAll(){
+  laserWarning.clear();
+  obstacleGroup.children.iterate(o=> o && deactivate(o));
+  hazardGroup.children.iterate(h=> h && deactivate(h));
+}
+
+function clearTimers(){
+  spawnEvent?.remove(); spawnEvent=null;
+  countdownEvent?.remove(); countdownEvent=null;
+}
+
+/* ===================== Start ===================== */
+game = new Phaser.Game(config);
+</script>
+</body>
+</html>
