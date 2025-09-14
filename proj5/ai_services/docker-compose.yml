@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - FACE_SERVICE_URL=http://face-detection-service:8001
+      - OBJECT_SERVICE_URL=http://object-detection-service:8002
+      - SIMILARITY_SERVICE_URL=http://image-similarity-service:8003
+    depends_on:
+      - face-detection-service
+      - object-detection-service
+      - image-similarity-service
+    networks:
+      - ai-network
+
+  face-detection-service:
+    build: ./services/face-detection-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/blaze_face_short_range.tflite
+    networks:
+      - ai-network
+
+  object-detection-service:
+    build: ./services/object-detection-service
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/efficientdet_lite0.tflite
+    networks:
+      - ai-network
+
+  image-similarity-service:
+    build: ./services/image-similarity-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/mobilenet_v3_small.tflite
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    driver: bridge

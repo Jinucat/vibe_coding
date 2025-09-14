@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>AI Services Demo (Gateway)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0f1221; --card:#161a2b; --muted:#aab0c0; --accent:#5eead4; --error:#ff6b6b; --ok:#7cf38d; --warn:#ffd166; }
+    * { box-sizing:border-box }
+    body{
+      margin:0; padding:20px; font-family:Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1200px 600px at 10% 0%, #1b2040 0, #0f1221 60%); color:#e8ecf3;
+    }
+    h1 { margin:0 0 12px; font-size:22px }
+    .top { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
+    .pill { padding:4px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.18); font-size:12px }
+    .muted { color:var(--muted); font-size:13px }
+    .ok { color:var(--ok) } .err { color:var(--error) } .warn { color:var(--warn) }
+    select,button{
+      appearance:none; padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.22);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); color:#e8ecf3;
+    }
+    button:disabled{opacity:.55; cursor:not-allowed}
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap:16px }
+    .card { background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25) }
+    .card h3{margin:0 0 8px; font-size:18px}
+    .picker{border:1px dashed rgba(255,255,255,.2); border-radius:12px; padding:10px; margin:10px 0; text-align:center}
+    .picker.drag{ background:rgba(255,255,255,.05) }
+    input[type=file]{ display:block; margin:8px auto 0 }
+    .preview{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:8px }
+    .preview img{ width:100%; height:140px; object-fit:cover; border-radius:10px; border:1px solid rgba(255,255,255,.08) }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+    .out{
+      white-space:pre-wrap; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+      padding:12px; border-radius:10px; min-height:70px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:#d8e1f0
+    }
+    .footer{ margin-top:16px; color:var(--muted); font-size:12px; text-align:right }
+    a{ color:var(--accent); text-decoration:none }
+  </style>
+</head>
+<body>
+  <h1>AI Services Demo <span class="muted">— Gateway on localhost</span></h1>
+
+  <div class="top">
+    <div class="pill">라우트 모드:
+      <select id="routeMode">
+        <option value="v1" selected>v1 (정식 경로)</option>
+        <option value="alias">alias (별칭 경로)</option>
+      </select>
+    </div>
+    <button id="btnRefresh">상태 새로고침</button>
+    <span id="version" class="muted">버전/URL 조회 중…</span>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="row" style="justify-content:space-between">
+      <div class="row" style="gap:10px">
+        <strong>헬스체크</strong>
+        <span id="overall" class="pill muted">-</span>
+      </div>
+      <a class="muted" href="/health" target="_blank" rel="noopener">/health</a>
+    </div>
+    <div id="health" class="row" style="gap:16px; margin-top:8px; flex-wrap:wrap"></div>
+  </div>
+
+  <div class="grid">
+    <!-- 얼굴 검출 -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h3>얼굴 검출</h3>
+        <span id="epFace" class="pill muted"></span>
+      </div>
+      <div id="facePicker" class="picker">
+        <div class="muted">이미지 드래그&드롭 또는 파일 선택</div>
+        <input id="faceFile" type="file" accept="image/*" />
+        <div class="preview"><img id="facePrev" alt=""></div>
+      </div>
+      <div class="row">
+        <button id="btnFace">검출 실행</button>
+        <span id="metaFace" class="muted"></span>
+      </div>
+      <div id="outFace" class="out"></div>
+    </div>
+
+    <!-- 객체 검출 -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h3>객체 검출</h3>
+        <span id="epObj" class="pill muted"></span>
+      </div>
+      <div id="objPicker" class="picker">
+        <div class="muted">이미지 드래그&드롭 또는 파일 선택</div>
+        <input id="objFile" type="file" accept="image/*" />
+        <div class="preview"><img id="objPrev" alt=""></div>
+      </div>
+      <div class="row">
+        <button id="btnObj">검출 실행</button>
+        <span id="metaObj" class="muted"></span>
+      </div>
+      <div id="outObj" class="out"></div>
+    </div>
+
+    <!-- 유사도 비교 -->
+    <div class="card" style="grid-column:1/-1;">
+      <div class="row" style="justify-content:space-between;">
+        <h3>이미지 유사도 비교</h3>
+        <span id="epSim" class="pill muted"></span>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px;">
+        <div class="picker" id="simPickerA">
+          <div class="muted">이미지 A</div>
+          <input id="simA" type="file" accept="image/*" />
+          <div class="preview"><img id="simPrevA" alt=""></div>
+        </div>
+        <div class="picker" id="simPickerB">
+          <div class="muted">이미지 B</div>
+          <input id="simB" type="file" accept="image/*" />
+          <div class="preview"><img id="simPrevB" alt=""></div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnSim">비교 실행</button>
+        <span id="metaSim" class="muted"></span>
+      </div>
+      <div id="outSim" class="out"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    문서: <a href="/docs" target="_blank" rel="noopener">/docs</a> · 디버그: <a href="/__routes" target="_blank" rel="noopener">/__routes</a>
+  </div>
+
+<script>
+const ROUTES = {
+  v1: {
+    face: '/api/v1/face-detection/detect',
+    object: '/api/v1/object-detection/detect',
+    similarity: '/api/v1/image-similarity/compare',
+  },
+  alias: {
+    face: '/detect/face',
+    object: '/detect/object',
+    similarity: '/similarity/compare',
+  }
+};
+let routeMode = 'v1';
+
+function setBusy(btn, busy) {
+  btn.disabled = busy;
+  btn.textContent = busy ? '요청 중…' : btn.dataset.label;
+}
+function showJSON(el, data) { el.textContent = JSON.stringify(data, null, 2); }
+function toastMeta(metaEl, ok, ms, status, note) {
+  const noteHtml = note ? ` · <span class="warn">${note}</span>` : '';
+  metaEl.innerHTML = ok
+    ? `<span class="ok">성공</span> · ${ms} ms · status ${status}${noteHtml}`
+    : `<span class="err">실패</span> · ${ms} ms · status ${status}${noteHtml}`;
+}
+function wirePicker(box, input, img) {
+  const onFile = file => {
+    if (!file) { img.src = ''; return; }
+    const r = new FileReader(); r.onload = () => img.src = r.result; r.readAsDataURL(file);
+  };
+  input.addEventListener('change', e => onFile(e.target.files[0]));
+  ['dragenter','dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); box.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); box.classList.remove('drag'); }));
+  box.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f) { input.files = e.dataTransfer.files; input.dispatchEvent(new Event('change')); }});
+}
+function updateEndpointLabels() {
+  document.getElementById('epFace').textContent = `POST ${ROUTES[routeMode].face}`;
+  document.getElementById('epObj').textContent  = `POST ${ROUTES[routeMode].object}`;
+  document.getElementById('epSim').textContent  = `POST ${ROUTES[routeMode].similarity}`;
+}
+
+// POST with fallback: if v1 404 → retry alias once and switch mode
+async function postWithFallback(kind, makeFormData) {
+  const controller = new AbortController();
+  const t0 = performance.now();
+  const pathPrimary = ROUTES[routeMode][kind];
+  let res, text, note;
+
+  try {
+    res = await fetch(pathPrimary, { method:'POST', body: makeFormData(), signal: controller.signal });
+    text = await res.text();
+    if (res.status === 404 && routeMode === 'v1') {
+      // fallback to alias once
+      const tMid = performance.now();
+      const aliasPath = ROUTES.alias[kind];
+      const res2 = await fetch(aliasPath, { method:'POST', body: makeFormData() });
+      const text2 = await res2.text();
+      const t2 = performance.now();
+      const payload2 = safeJson(text2);
+      if (res2.ok) {
+        routeMode = 'alias';
+        document.getElementById('routeMode').value = 'alias';
+        updateEndpointLabels();
+        return { res: res2, data: payload2, ms: Math.round(t2 - t0), note: 'v1→alias 자동 전환' };
+      }
+      return { res: res2, data: payload2, ms: Math.round(t2 - t0), note: 'v1 실패 후 alias 재시도' };
+    }
+    const t1 = performance.now();
+    return { res, data: safeJson(text), ms: Math.round(t1 - t0), note };
+  } catch (e) {
+    return { res: { ok:false, status:0 }, data: { error:String(e) }, ms: Math.round(performance.now()-t0), note:'네트워크 예외' };
+  }
+}
+function safeJson(t){ try{ return JSON.parse(t) } catch{ return { raw: t } } }
+
+async function refreshStatus() {
+  // __version
+  try {
+    const v = await (await fetch('/__version')).json();
+    document.getElementById('version').textContent = `Gateway v${v.ver} · FACE=${v.face} · OBJ=${v.obj} · SIM=${v.sim}`;
+  } catch { document.getElementById('version').textContent = '버전 조회 실패'; }
+  // /health
+  try {
+    const h = await (await fetch('/health')).json();
+    const overall = document.getElementById('overall');
+    overall.textContent = h.overall_status;
+    overall.className = 'pill ' + (h.overall_status === 'healthy' ? 'ok' : 'err');
+    const host = document.getElementById('health'); host.innerHTML = '';
+    for (const [name, val] of Object.entries(h.services)) {
+      const span = document.createElement('span');
+      span.className = 'pill ' + (val.status === 'healthy' ? 'ok' : 'err');
+      span.textContent = `${name}: ${val.status}`;
+      host.appendChild(span);
+    }
+  } catch { document.getElementById('overall').textContent = '조회 실패'; }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 미리보기/드래그앤드롭
+  wirePicker(document.getElementById('facePicker'), document.getElementById('faceFile'), document.getElementById('facePrev'));
+  wirePicker(document.getElementById('objPicker'),  document.getElementById('objFile'),  document.getElementById('objPrev'));
+  wirePicker(document.getElementById('simPickerA'), document.getElementById('simA'),     document.getElementById('simPrevA'));
+  wirePicker(document.getElementById('simPickerB'), document.getElementById('simB'),     document.getElementById('simPrevB'));
+
+  // 버튼 라벨 저장
+  ['btnFace','btnObj','btnSim'].forEach(id => { const b=document.getElementById(id); b.dataset.label=b.textContent; });
+
+  // 라우트 모드 변경
+  document.getElementById('routeMode').onchange = (e)=>{ routeMode = e.target.value; updateEndpointLabels(); };
+  updateEndpointLabels();
+  document.getElementById('btnRefresh').onclick = refreshStatus;
+  refreshStatus();
+
+  // 얼굴
+  document.getElementById('btnFace').onclick = async () => {
+    const file = document.getElementById('faceFile').files[0];
+    const out = document.getElementById('outFace'); const meta = document.getElementById('metaFace');
+    if (!file) { out.textContent = '이미지를 선택하세요.'; return; }
+    const btn = document.getElementById('btnFace'); setBusy(btn,true);
+    const makeFD = () => { const fd = new FormData(); fd.append('file', file); return fd; };
+    const r = await postWithFallback('face', makeFD);
+    toastMeta(meta, r.res.ok, r.ms, r.res.status, r.note); showJSON(out, r.data);
+    setBusy(btn,false);
+  };
+
+  // 객체
+  document.getElementById('btnObj').onclick = async () => {
+    const file = document.getElementById('objFile').files[0];
+    const out = document.getElementById('outObj'); const meta = document.getElementById('metaObj');
+    if (!file) { out.textContent = '이미지를 선택하세요.'; return; }
+    const btn = document.getElementById('btnObj'); setBusy(btn,true);
+    const makeFD = () => { const fd = new FormData(); fd.append('file', file); return fd; };
+    const r = await postWithFallback('object', makeFD);
+    toastMeta(meta, r.res.ok, r.ms, r.res.status, r.note); showJSON(out, r.data);
+    setBusy(btn,false);
+  };
+
+  // 유사도
+  document.getElementById('btnSim').onclick = async () => {
+    const a = document.getElementById('simA').files[0];
+    const b = document.getElementById('simB').files[0];
+    const out = document.getElementById('outSim'); const meta = document.getElementById('metaSim');
+    if (!a || !b) { out.textContent = '이미지 2개를 선택하세요.'; return; }
+    const btn = document.getElementById('btnSim'); setBusy(btn,true);
+    const makeFD = () => { const fd = new FormData(); fd.append('file1', a); fd.append('file2', b); return fd; };
+    const r = await postWithFallback('similarity', makeFD);
+    toastMeta(meta, r.res.ok, r.ms, r.res.status, r.note); showJSON(out, r.data);
+    setBusy(btn,false);
+  };
+});
+</script>
+</body>
+</html>
